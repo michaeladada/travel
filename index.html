@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Where is he?</title>
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f0f0f0;
+    }
+    .flight {
+      background: white;
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    .map {
+      height: 300px;
+      width: 100%;
+      max-width: 500px;
+      border-radius: 10px;
+      margin-top: 10px;
+    }
+    .icon {
+      width: 48px;
+      height: 48px;
+      vertical-align: middle;
+    }
+  </style>
+</head>
+<body>
+<h1>Where is he???</h1>
+
+<button onclick="toggleRules()" style="margin-bottom:10px;">📜 Meeting Rules</button>
+<div id="rules" style="display:none; background:#fff; padding:15px; border-radius:8px; box-shadow:0 0 8px rgba(0,0,0,0.1);">
+  <table style="width:100%; font-size:16px;">
+    <tr>
+      <td><img src="https://cdn-icons-png.flaticon.com/512/6644/6644809.png" alt="Hands" class="icon"/></td>
+      <td>I'll practically never let go of your hand</td>
+    </tr>
+    <tr>
+      <td><img src="https://st2.depositphotos.com/4464609/6772/v/950/depositphotos_67725599-stock-illustration-heart-of-kisses.jpg" alt="Kiss" class="icon"/></td>
+      <td>Lots of kissing</td>
+    </tr>
+    <tr>
+      <td><img src="https://img.freepik.com/premium-vector/romantic-hug-icon-simple-vector-illustration_404166-644.jpg" alt="Hugs" class="icon"/></td>
+      <td>Tons of hugs</td>
+    </tr>
+    <tr>
+      <td><img src="open_legs.png" alt="Warning" class="icon"/></td>
+      <td>Minor fingering allowed <strong>(warning)</strong></td>
+    </tr>
+    <tr>
+      <td><img src="https://media1.thehungryjpeg.com/thumbs2/ori_3684940_knhiqzfqfepcfbh9rdibha1p7lqz2vln927v1x73_no-sex-in-public-place-ban-symbol.png" alt="No Sex" class="icon"/></td>
+      <td>No sex</td>
+    </tr>
+    <tr>
+      <td><img src="https://previews.123rf.com/images/ahasoft2000/ahasoft20002001/ahasoft2000200111463/137685079-forbidden-oral-sex-raster-icon-flat-forbidden-oral-sex-symbol-is-isolated-on-a-white-background.jpg" alt="No BJ" class="icon"/></td>
+      <td>No blowjob</td>
+    </tr>
+    <tr>
+      <td><img src="https://cdn-icons-png.flaticon.com/512/13098/13098729.png" alt="No Kidnapping" class="icon"/></td>
+      <td>No kidnapping</td>
+    </tr>
+  </table>
+</div>
+<br/>
+<br/>
+<div id="result1" class="flight"></div>
+<div id="result2" class="flight"></div>
+
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const flights = [
+    { callsign: 'BBG706', target: 'result1' },
+    { callsign: 'MSR781', target: 'result2' }
+  ];
+
+  function toggleRules() {
+    const el = document.getElementById('rules');
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+
+  async function fetchFlightData(callsign, targetId) {
+    const airplaneIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-violet.png',
+      iconSize: [30, 30],
+      iconAnchor: [15, 15], // center of the icon
+    });
+
+    const res = await fetch('https://opensky-network.org/api/states/all');
+    const data = await res.json();
+    const state = data.states.find(
+      s => s[1] && s[1].trim().toUpperCase() === callsign.toUpperCase()
+    );
+
+    const container = document.getElementById(targetId);
+    if (!state) {
+      container.innerHTML = `<strong>${callsign}</strong><br/>Flight not found.`;
+      return;
+    }
+
+    const [icao24, cs, country, timePos, lastContact, lon, lat, baroAlt, onGround, velocity] = state;
+
+    const isInAir = !onGround && lat != null && lon != null && velocity != null && velocity > 30;
+    const hasNotDeparted = onGround && velocity < 5;
+    const landed = onGround && !hasNotDeparted;
+
+    container.innerHTML = `
+        <strong>${callsign}</strong><br/>
+        Origin Country: ${country}<br/>
+        Altitude: ${baroAlt ? baroAlt.toFixed(0) + ' m' : 'N/A'}<br/>
+        Velocity: ${velocity ? velocity.toFixed(1) + ' m/s' : 'N/A'}<br/>
+        Status: ${landed ? 'Landed' : hasNotDeparted ? 'On Ground (Yet to Depart)' : 'In Air'}<br/>
+      `;
+
+    if (isInAir) {
+      const mapDiv = document.createElement('div');
+      mapDiv.id = `map_${targetId}`;
+      mapDiv.className = 'map';
+      container.appendChild(mapDiv);
+
+      setTimeout(() => {
+        const map = L.map(mapDiv.id).setView([lat, lon], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 19,
+          attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+        L.marker([lat, lon]).addTo(map).bindPopup(`${callsign}`).openPopup();
+      }, 50);
+    }
+  }
+
+  flights.forEach(f => fetchFlightData(f.callsign, f.target));
+
+
+  const airlineIATAtoICAO = {
+    LY: "ELY",
+    LH: "DLH",
+    TK: "THY",
+    BA: "BAW",
+    AF: "AFR",
+    FR: "RYR",
+    U2: "EZY",
+    EK: "UAE",
+    QR: "QTR",
+    UA: "UAL",
+    AA: "AAL"
+  };
+</script>
+</body>
+</html>
